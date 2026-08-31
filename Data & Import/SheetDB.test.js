@@ -153,6 +153,62 @@ test('writes correct headers for Schedules table', () => {
         ['id', 'department', 'payload_json', 'created_at']);
 });
 
+// ─── SheetDB.getOne ───────────────────────────────────────────────────────────
+
+console.log('\nSheetDB.getOne');
+
+test('returns null when sheet has only headers', () => {
+    resetSheets();
+    _sheets['Employees'] = { _rows: [['id', 'primary_identifier', 'payload_json', 'updated_at', 'status']] };
+    assertEqual(SheetDB.getOne('Employees', 'emp_1'), null);
+});
+
+test('returns the matching record with correct _rowNum', () => {
+    resetSheets();
+    _sheets['Employees'] = { _rows: [
+        ['id', 'primary_identifier', 'payload_json', 'updated_at', 'status'],
+        ['emp_1', 'Smith, John', '{"phone":"555-1234"}', '2024-06-01T00:00:00Z', 'ACTIVE'],
+        ['emp_2', 'Doe, Jane',   '{"phone":"555-5678"}', '2024-06-02T00:00:00Z', 'ACTIVE'],
+    ]};
+    const rec = SheetDB.getOne('Employees', 'emp_2');
+    assertEqual(rec.id, 'emp_2');
+    assertEqual(rec._rowNum, 3, '_rowNum should reflect actual spreadsheet row (1-indexed + header)');
+    assertEqual(rec.phone, '555-5678', 'payload should be unpacked');
+});
+
+test('returns null when id does not exist', () => {
+    resetSheets();
+    _sheets['Employees'] = { _rows: [
+        ['id', 'primary_identifier', 'payload_json', 'updated_at', 'status'],
+        ['emp_1', 'Smith, John', '{}', '2024-06-01T00:00:00Z', 'ACTIVE'],
+    ]};
+    assertEqual(SheetDB.getOne('Employees', 'emp_999'), null);
+});
+
+test('finds the first matching row when ids are not unique', () => {
+    resetSheets();
+    _sheets['Employees'] = { _rows: [
+        ['id', 'primary_identifier', 'payload_json', 'updated_at', 'status'],
+        ['dup_id', 'First, One',  '{"seq":1}', '2024-01-01', 'ACTIVE'],
+        ['dup_id', 'Second, Two', '{"seq":2}', '2024-01-02', 'ACTIVE'],
+    ]};
+    const rec = SheetDB.getOne('Employees', 'dup_id');
+    assertEqual(rec._rowNum, 2, 'should return the first matching row');
+    assertEqual(rec.seq, 1);
+});
+
+test('survives a malformed payload_json cell in the matched row without throwing', () => {
+    resetSheets();
+    _sheets['Employees'] = { _rows: [
+        ['id', 'primary_identifier', 'payload_json', 'updated_at', 'status'],
+        ['emp_bad', 'Bad, Data', '{NOT VALID JSON}', '2024-01-01', 'ACTIVE'],
+    ]};
+    let result;
+    assert(() => { result = SheetDB.getOne('Employees', 'emp_bad'); }, 'should not throw on bad JSON');
+    result = SheetDB.getOne('Employees', 'emp_bad');
+    assertEqual(result.id, 'emp_bad', 'record should still be returned despite bad JSON');
+});
+
 // ─── SheetDB.getAll ───────────────────────────────────────────────────────────
 
 console.log('\nSheetDB.getAll');

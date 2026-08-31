@@ -107,42 +107,51 @@ const SheetDB = (function () {
         return row;
     }
 
+    // Two step JSON payload parsing function that gets reused by both getOne and getAll
+    function _rowToRecord(headers, col, row, rowNum, sheetName) {
+        let record = {
+            _rowNum: rowNum
+        };
+
+        // First step to reading the JSON data is to check if it exists then unpack the data
+        if (col.payload_json !== undefined && row[col.payload_json]) {
+            try {
+                const payload = JSON.parse(row[col.payload_json]);
+                // Using the spread operator (...) to unpack all of the internal key value pairs of the JSON payload
+                record = { ...record, ...payload };
+            } catch (e) {
+                Logger.log(`JSON parse error on sheet ${sheetName} row ${rowNum}: ${e.message}`);
+            }
+        }
+
+        // Second step is to dynamically assign all explicit spreadsheet columns found in the header (that aren't the JSON that was parsed in step 1), that way even if a manager adds a new column or shifts them around the application will know how to handle it and continue to function without "any" issues (there are always issues, good testing is required)
+        Object.keys(col).forEach(headerName => {
+            if (headerName !== 'payload_json') {
+                record[headerName] = row[col[headerName]] !== '' ? String(row[col[headerName]]) : null;
+            }
+        });
+
+        return record;
+    }
+
     return {
-        getAll(sheetName) {
-            const sheet = _getTable(sheetName)
-            const data = sheet.getDataRange().getValues();
-            if (data.length <= 1) return [];
+        getOne(sheetName, id) {
+            const sheet = _getTable(sheetName);
+            if (sheet.getLastRow() <= 1) return null;
 
-            // Get the spreadsheet headers and assign col a "map" of all headers so its dynamic
-            const headers = data[0];
+            const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
             const col = _getHeaderMap(headers);
+            if (col.id === undefined) return null; // now way to find a row by id if it doesnt exist
 
-            // Using the same method for each row slice the values and map the records by row and column index so it looks as a call saying find `id` from x employee it then knows to search for what index `idx` matches the key `id` and returns the value at row x idx y.
-            return data.slice(1).map((row, idx) => {
-                let record = {
-                    _rowNum: idx + 2
-                };
+            // getRange() is used instead of getDataRange() like in getAll because we want a narrowly scoped amount of data to search for the id rather than pulling the entire sheet into memory and looking for the id adds extra time to the search and it also takes up more memory which on lower powered computers or tablets it might feel sluggish.
+            const idColValues = sheet.getRange(2, col.id + 1, sheet.getLastRow() - 1, 1).getValues();
+            const rowNum = idColValues.findIndex(v => String(v[0]) === String(id));
 
-                // First step to reading the JSON data is to check if it exists then unpack the data
-                if (col.payload_json !== undefined && row[col.payload_json]) {
-                    try {
-                        const payload = JSON.parse(row[col.payload_json]);
-                        // Using the spread operator (...) to unpack all of the internal key value pairs of the JSON payload
-                        record = { ...record, ...payload };
-                    } catch (e) {
-                        Logger.log(`JSON parse error on sheet ${sheetName} row ${idx + 2}: ${e.message}`);
-                    }
-                }
+            if (rowNum === -1) return null;
 
-                // Second step is to dynamically assign all explicit spreadsheet columns found in the header (that aren't the JSON that was parsed in step 1), that way even if a manager adds a new column or shifts them around the application will know how to handle it and continue to function without "any" issues (there are always issues, good testing is required)
-                Object.keys(col).forEach(headerName => {
-                    if (headerName !== 'payload_json') {
-                        record[headerName] = row[col[headerName]] !== '' ? String(row[col[headerName]]) : null;
-                    }
-                });
-
-                return record;
-            });
+            const targetRow = rowNum + 2; // accounting for spreadsheet 0-index plus the header row
+            const row = sheet.getRange(targetRow, 1, 1, sheet.getLastColumn()).getValues()[0];
+            return _rowToRecord(headers, col, row, targetRow, sheetName);
         },
 
         saveOne(sheetName, record) {
@@ -171,6 +180,20 @@ const SheetDB = (function () {
             } finally {
                 lock.releaseLock();
             }
+        },
+
+        getAll(sheetName) {
+            const sheet = _getTable(sheetName)
+            // getDataRange() grabs the entire sheet we accept that getAll will do just that get all of the data
+            const data = sheet.getDataRange().getValues();
+            if (data.length <= 1) return [];
+
+            // Get the spreadsheet headers and assign col a "map" of all headers so its dynamic
+            const headers = data[0];
+            const col = _getHeaderMap(headers);
+
+            // Using the same method for each row slice the values and map the records by row and column index so it looks as a call saying find `id` from x employee it then knows to search for what index `idx` matches the key `id` and returns the value at row x idx y.
+            return data.slice(1).map((row, idx) => _rowToRecord(headers, col, row, idx + 2, sheetName));
         },
 
         saveAll(sheetName, records) {
