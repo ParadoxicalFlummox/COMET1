@@ -16,7 +16,8 @@ const ALLOWED_PAYLOAD_KEYS = Object.freeze([
     'qualifiedDepartments',
     'maxHoursPerWeek',
     'sickLeaveBalanceHours',
-    'lastImportedAt'
+    'lastImportedAt',
+    'locked'
 ]);
 
 /**
@@ -119,7 +120,8 @@ function upsertRecord(sheetName, record) {
 
 /**
  * Delete a record, this function is included to ensure full CRUD operations but will rarely be used
- * the delete function will be used like a surgical delete in case a mistake is made.
+ * the delete function will be used like a surgical delete in case a mistake is made. uses a delete
+ * by id then a saveall to push the table without that record.
  */
 function deleteRecord(sheetName, id) {
     _validateTableName(sheetName);
@@ -159,4 +161,34 @@ function importUKGData(rawInput) {
      */
     const sanitizedInput = Sanitizer.cleanValue(rawInput);
     return UKGImporter.importFromPasteData(sanitizedInput);
+}
+
+/** 
+ * Sidebar Row Inspection Callbacks
+ */
+
+function getSelectedRowData(sheetName) {
+    const resolvedSheet = sheetName || SpreadsheetApp.getActiveSheet().getName();
+    _validateTableName(resolvedSheet);
+
+    const activeRow = SpreadsheetApp.getActiveSheet().getActiveCell().getRow();
+    if (activeRow <= 1) return null; // protects against pulling the header row for inspection
+
+    const records = SheetDB.getAll(resolvedSheet);
+    return records.find(rec._rowNum === activeRow) || null;
+}
+
+function saveSelectedRowData(updatedRecord, sheetName) {
+    if (!updatedRecord) throw new Error("No record provided.");
+    const resolvedSheet = sheetName || SpreadsheetApp.getActiveSheet().getName();
+    _validateTableName(resolvedSheet);
+
+    const sanitized = Sanitizer.cleanObject(updatedRecord);
+    const whitelisted = _whitelistRecordKeys(resolvedSheet, sanitized);
+    SheetDB.saveOne(resolvedSheet, whitelisted);
+    return { saved: true, id: whitelisted.id };
+}
+
+function reloadRecord(sheetName, id) {
+    return getRecord(sheetName, id);
 }
