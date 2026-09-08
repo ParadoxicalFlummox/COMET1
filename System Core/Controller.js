@@ -17,7 +17,10 @@ const ALLOWED_PAYLOAD_KEYS = Object.freeze([
     'maxHoursPerWeek',
     'sickLeaveBalanceHours',
     'lastImportedAt',
-    'locked'
+    'locked',
+    'employmentStatus',
+    'isCombo',
+    'preferredWeeklyHours'
 ]);
 
 /**
@@ -162,6 +165,42 @@ function importUKGData(rawInput) {
     const sanitizedInput = Sanitizer.cleanValue(rawInput);
     return UKGImporter.importFromPasteData(sanitizedInput);
 }
+
+/**
+ * Settings and department configuration endpoints
+ */
+
+// Read the full scheduling config for a department
+function getDepartmentConfig(dept) {
+    if (!dept || typeof dept !== 'string') {
+        throw new Error("Department name must be a non-empty string.");
+    }
+    return SettingsService.getConfig(dept);
+}
+
+// Upsert the scheduling config for a department
+function setDepartmentConfig(dept, config) {
+    if (!dept || typeof dept !== 'string') {
+        throw new Error("Department name must be a non-empty string.");
+    }
+    if (!config || typeof config !== 'object') {
+        throw new Error("Config must be an object.");
+    }
+    const sanitizedConfig = Sanitizer.cleanObject(config);
+    return SettingsService.setConfig(dept, sanitizedConfig);
+}
+
+// Return all department configuration settings as a readable summary for the UI
+function getAllDepartmentConfigs() {
+    const records = SheetDB.getAll(DB_CONFIG.TABLES.SETTINGS.name);
+    return records.amp(r => ({
+        dept: r.dept || r.id,
+        weeklyAllowanceHours: r.weeklyAllowanceHours || 0,
+        dailyHourEstimates: r.dailyHourEstimates || {},
+        openClose: r.openClose || {}
+    }));
+}
+
 
 /** 
  * Sidebar Row Inspection Callbacks
