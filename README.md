@@ -48,4 +48,4 @@ COMET1 is a streamlined Google Apps Script framework built directly on top of a 
 
 ### Project Notice & AI Usage
 
-Claude Code is used exclusively in this project for writing, running, and maintaining unit tests. Core business logic, features, and system architecture are designed and implemented manually.
+Rool is used exclusively in this project for writing, running, and maintaining unit tests. Core logic, features, and system architecture are designed and implemented manually.
