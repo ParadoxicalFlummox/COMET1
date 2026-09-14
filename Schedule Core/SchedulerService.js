@@ -63,4 +63,81 @@ const SchedulerService = (function () {
         const pad = (n) => (n < 10 ? '0' + n : n);
         return `${pad(hrs)}:${pad(mins)}`;
     }
+
+    return {
+        /**
+         * Core Auto-scheduler engine
+         * 
+         * the auto scheduler is set up to read the weeky allowance, daily hourly foot traffic estimates and the store's open and close windows from the settings table
+         * 
+         * the rules enforced are as follows
+         * - FT = exactly 40h, PT = 24-40h, LPT = <24h, LOA is not scheduled
+         * - Vacation days count toward the employees weekly hours
+         * - All employees get two days off per week
+         * - Seniority shifts more hours to senior employees unless otherwise specified, with preferredWeekyHours override
+         * - preferred days off + locked flag are respected between schedule generations and regenerations
+         * - Coverage on the floor on Fri/Sat/Sun are protected with no gaps, weekday Mon/Tues/Wed absorb gaps
+         * - Breaks are staggered by 15 minutes
+         */
+        generateSchedule(params) {
+            const department = params.department;
+            const weekStartDate = params.weekStartDate;
+
+            // ===== Load department configurations from settings table =====
+            const cfg = SettingsService.getConfig(department) || {};
+            const budgetHours = cfg.weeklyAllowanceHours || params.weeklyHoursBudget || 0;
+            const dailyEstimates = cfg.dailyHourEstimates || {};
+            const openClose = cfg.openClose || {};
+
+            // Defaults for scheduleable hours if they are not configured (this is based on 634)
+            const weekdayWindow = openClose.weekday || ['4:00', '23:30'];
+            const saturdayWindow = openClose.saturday || ['4:00', '22:00'];
+            const sundayWindow = openClose.sunday || ['4:00', '21:00'];
+
+            // Day specific key, value table
+            const dayWindows = {
+                Monday: weekdayWindow,
+                Tuesday: weekdayWindow,
+                Wednesday: weekdayWindow,
+                Thursday: weekdayWindow,
+                Friday: weekdayWindow,
+                Saturday: saturdayWindow,
+                Sunday: sundayWindow
+            };
+
+            // ===== Fetch employee data =====
+            const allEmployees = SheetDB.getAll(DB_CONFIG.TABLES.EMPLOYEES.name);
+            const deptEmployees = allEmployees.filter(emp =>
+                emp.employmentStatus !== 'LOA' &&
+                !emp.locked &&
+                (emp.homeDepartment === department ||
+                    (emp.isCombo &&
+                        emp.qualifiedDepartments &&
+                        emp.qualifiedDepartments.includes(department))));
+            if (deptEmployees.length === 0) {
+                throw new Error(`No active employees found for department: ${department}`);
+            }
+            const sortedEmployees = _sortBySeniority(deptEmployees);
+            const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+            let remainingBudget = budgetHours;
+            const assignedSchedules = [];
+            let breakStaggerTracker = 0;
+
+            function toMinutes(t) {
+                const [h, m] = String(t).split(':').map(Number);
+                return (h || 0) * 60 + (m || 0);
+            }
+            function dayWindowMinutes(day) {
+                const [open, close] = dayWindows[day];
+                return { openMin: toMinutes(open), closeMin: toMinutes(close) };
+            }
+            function dailyTarget(day) {
+                return dailyEstimates[day] || 0;
+            }
+
+            sortedEmployees.forEach(emp => {
+                const status = emp.employmentStatus
+            })
+        }
+    }
 })
