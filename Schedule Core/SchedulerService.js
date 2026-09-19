@@ -18,6 +18,40 @@ const SchedulerService = (function () {
     });
 
     /**
+     * Status policy table: this table determines how each employment status derives a weekly hour target.
+     * 
+     * > A fixed target forces exact hours derived from the RULES table above.
+     * > A min/max target clamps an employees desired hours between the values in the RULES table above (also takes into consideration the hourly budget).
+     * > A null or no entry is assigned to missing data or LOA employees.
+     * 
+     * > Adding a new status entry requires defining the role below and adding new RULES above (or manual specification).
+     */
+    const STATUS_POLICY = Object.freeze({
+        FT: { fixed: RULES.FT_HOURS },
+        PT: { min: RULES.PT_MIN_HOURS, max: RULES.PT_MAX_HOURS },
+        LPT: { min: null, max: LPT_MAX_HOURS }
+    });
+
+    /**
+     * Resolves an employee status with weekly hour target from STATUS_POLICY
+     * will return null when the status has no policy (LOA or unknown)
+     */
+    function _resolveTargetHours(emp) {
+        const status = emp.employmentStatus || ((emp.maxHoursPerWeek || 40) >= 32 ? 'FT' : 'PT');
+        const policy = STATUS_POLICY[status];
+        if (!policy) return null;
+        if (policy.fixed !== undefined) return { status, targetHours: policy.fixed };
+
+        // Desired hours: preferred > maxHoursPerWeek > policy floor > 0 (if unbound)
+        const desired = emp.preferredWeeklyHours || emp.maxHoursPerWeek || policy.min || 0;
+        let target = desired;
+        if (policy.min !== null) target = Math.max(policy.min, target);
+        if (policy.max !== null) target = Math.min(policy.max, target);
+
+        return { status, targetHours: target };
+    }
+
+    /**
      * Sort employees by employment type then by seniority
      */
 
@@ -89,7 +123,7 @@ const SchedulerService = (function () {
             const dailyEstimates = cfg.dailyHourEstimates || {};
             const openClose = cfg.openClose || {};
 
-            // Defaults for scheduleable hours if they are not configured (this is based on 634)
+            // Defaults for scheduleable hours if they are not configured (this is based on 634 EST)
             const weekdayWindow = openClose.weekday || ['4:00', '23:30'];
             const saturdayWindow = openClose.saturday || ['4:00', '22:00'];
             const sundayWindow = openClose.sunday || ['4:00', '21:00'];
@@ -107,17 +141,15 @@ const SchedulerService = (function () {
 
             // ===== Fetch employee data =====
             const allEmployees = SheetDB.getAll(DB_CONFIG.TABLES.EMPLOYEES.name);
-            const deptEmployees = allEmployees.filter(emp =>
-                emp.employmentStatus !== 'LOA' &&
-                !emp.locked &&
-                (emp.homeDepartment === department ||
-                    (emp.isCombo &&
-                        emp.qualifiedDepartments &&
-                        emp.qualifiedDepartments.includes(department))));
+            const deptEmployees = allEmployees.filter(emp => emp.employmentStatus !== 'LOA' && !emp.locked && (emp.homeDepartment === department ||
+                (emp.isCombo && emp.qualifiedDepartments && emp.qualifiedDepartments.includes(department))));
+
             if (deptEmployees.length === 0) {
                 throw new Error(`No active employees found for department: ${department}`);
             }
+
             const sortedEmployees = _sortBySeniority(deptEmployees);
+
             const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
             let remainingBudget = budgetHours;
             const assignedSchedules = [];
@@ -136,7 +168,19 @@ const SchedulerService = (function () {
             }
 
             sortedEmployees.forEach(emp => {
-                const status = emp.employmentStatus
+                const resolved = _resolveTargetHours(emp);
+                if (!resolved) return; // LOA or unknown status
+                const { status, targetHours } = resolved;
+
+                /**
+                 * Vacation burn policy:
+                 * > FT pays a flat 8hr/day
+                 * > PT/LPT pay what they would have been scheduled for that day
+                 * the shift length is derived from their FULL target, that way non-FT
+                 * employees don't burn through 8h of time for a 5h day
+                 * Using shiftLength from the FULL target keeps working shifts consistent
+                 * lengths even when using vacation time.
+                 */
             })
         }
     }
