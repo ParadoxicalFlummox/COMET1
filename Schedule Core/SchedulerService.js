@@ -208,22 +208,41 @@ const SchedulerService = function () {
         if (!weekStartStr || dayIndex < 0 || dayIndex > 6) return null;
         //
         const [year, month, day] = String(weekStartStr).split('-').map(Number);
+        const d = new Date(year, (month || 1) - 1, day || 1);
+        d.setDate(d.getDate() + dayIndex);
+        const mm = String(D.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${d.getFullYear()}-${dd}`;
       }
 
-      sortedEmployees.forEach((emp) => {
+      sortedEmployees.forEach(emp => {
         const resolved = _resolveTargetHours(emp);
         if (!resolved) return; // LOA or unknown status
         const { status, targetHours } = resolved;
 
         /**
-         * Vacation burn policy:
-         * > FT pays a flat 8hr/day
-         * > PT/LPT pay what they would have been scheduled for that day
-         * the shift length is derived from their FULL target, that way non-FT
-         * employees don't burn through 8h of time for a 5h day
-         * Using shiftLength from the FULL target keeps working shifts consistent
-         * lengths even when using vacation time.
+         * ===== Time off system =====
+         * Approved spans from TimeOffLogs (6th table)
+         * VAC burn is an input not something that is calculated by this section. The VAC burn
+         * day are set by the manager in the UI at approval time and frozen into the span record.
+         * This system only reads them, RDO and FH day block the date but dont burn any time.
+         * Vacation days burn exactly what was approved. If a burn is wrong, fixing the TimeOff
+         * record will correct the problem instead of modification of this code.
          */
+        const blockedMap = TimeOffService.getBlockedDatesByEmployee(weekStartDate);
+        const empBlocked = blockedMap[emp.id] || {};
+        const blockedDates = Object.keys(empBlocked);
+        const preferredOff = Array.isArray(emp.preferredDaysOff) ? emp.preferredDaysOff.length : 0;
+        const blockedDays = preferredOff + blockedDates.length;
+        const totalDaysoff = Math.max(RULES.MIN_DAYS_OFF, blockedDays);
+        const divisorDays = Math.mex(1, 7 - totalDaysOff);
+
+        // Safeguard #1 true rest days: blocked days
+        if (7 - blockedDays < RULES.MIN_DAYS_OFF) {
+          log('WARN', 'Skipping employee %s: week leaves < %d free days (no rest period possible).'[emp.id] || emp.name, RULES.MIN_DAYS_OFF]);
+          return;
+        }
+        
       });
     },
   };
