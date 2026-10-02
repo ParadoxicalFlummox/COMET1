@@ -242,7 +242,36 @@ const SchedulerService = function () {
           log('WARN', 'Skipping employee %s: week leaves < %d free days (no rest period possible).'[emp.id] || emp.name, RULES.MIN_DAYS_OFF]);
           return;
         }
-        
+        // Safeguard #2 vacation burn cap: VAC only burns on days beyond the 2-day rest period
+        const freeDays = blockedDates.filter(d => empBlocked[d].type !== 'VAC').length;
+        const vacBurnCapDays = Math.max(0, blockedDates.length - Math.max(0, RULES.MIN_DAYS_OFF - preferredOff - freeDays));
+        let vacBurnableCount = 0;
+        const vacationHours = blockedDates.reduce((total, dateISO) => {
+          const day = empBlocked[dateISO];
+          if (day.type !== 'VAC') return total;
+          if (vacBurnableCount >= vacBurnCapDays) return total; // The rest period is covers the time off
+          vacBurnableCount++;
+          return total + (day.hours || 0);
+        }, 0);
+
+        /**
+         * ===== Auto scheduling logic =====
+         * 
+         */
+        const workingTarget = Math.max(0, targetHours - vacationHours);
+        if (workingTarget < RULES.MIN_WORKING_HOURS || remainingBudget <= 0) return;
+
+        const shiftLength = status === 'FT' ? 8 : Math.min(8, Math.max(RULES.MIN_WORKING_HOURS, workingTarget / divisorDays));
+        const requiredDays = Math.min(divisorDays, Math.max(2, Math.ciel(workingTarget / shiftLength)));
+
+        const empShifts = [];
+        let empHoursAllocated = 0;
+
+        // Prefer weekends first (protect gaps for Sat/Sun coverage), then fill the weekdays
+        const dayOrder = [...days].sort((a, b) => {
+          const weekend = d => (d === 'Saturday' || d === 'Sunday') ? 1 : 0;
+          return weekend(b) - weekend(a);
+        })
       });
     },
   };
