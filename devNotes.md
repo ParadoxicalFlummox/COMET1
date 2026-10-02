@@ -18,3 +18,6 @@ much like v0 I am going to use batch reads and writes since GAS is slow and it o
 
 8-16-26
 the database function is complete and the Claude built file to run testcases against what I built has seemingly passed all tests after a couple of typo based bug fixes.
+
+9-19-26
+after thinking about it I may make a new table just for storing vacations and days off since it is becoming a complicated system just with planning and thinking through how I could implement it. Ideally I dont want to just keep making new tables as it causes the system to become more complicated but if I want this tool to be actually useful I think this is the best way to do it. Now I also did get confirmation on how vacation math works, essentially an employee get a prorated amount that is averaged in UKG across the last 6 weeks, so if someone averages 5 hours then a single day of vacation would be 5 hours unless otherwise specified. I also confirmed that managers want the system to ask instead of assuming and applying. With the vacation system I was trying to come up with ways that I could implement this UI logic to find the best fit for a vacation that balances an employees regular days off with floating holidays and finally burning up vacation time. I should build it in a way that it can easily be use in a general sense rather than specalized for my work.
