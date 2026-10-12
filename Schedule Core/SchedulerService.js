@@ -271,6 +271,27 @@ const SchedulerService = function () {
         const dayOrder = [...days].sort((a, b) => {
           const weekend = d => (d === 'Saturday' || d === 'Sunday') ? 1 : 0;
           return weekend(b) - weekend(a);
+        });
+
+        dayOrder.forEach((day, dayIndex) => {
+          if (emp.preferredDaysOff && emp.preferredDaysOff.includes(day)) return;
+          // Approved time off: convert the weekday to this week's ISO date
+          const dayIndex = days.indexOf(day);
+          const blockedISO = _weekDateToISO(weekStartDate, dayIndex);
+          if (empBlocked[blockedISO]) return; // RDO/FH/VAC day: unavailable to be scheduled
+          if (empShifts.length >= requiredDays) return;
+
+          // Final shift may be trimmed to hit the target exactly
+          const remaining = workingTarget - empHoursAllocated;
+          const thisLen = Math.min(shiftLength, remaining);
+          if (thisLen < RULES.MIN_WORKING_HOURS) return; // Cannot schedule an employee less than the minimum shift length if they dont have enough time remaining
+
+          const { openMin, closeMin } = dayWindowMinutes(day);
+
+          
+
+          
+          
         })
       });
     },
