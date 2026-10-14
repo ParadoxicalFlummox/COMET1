@@ -9,14 +9,7 @@ const DB_CONFIG = Object.freeze({
     // Table 1: Master Employee Directory - Contains information that is manually set plus UKG import metadata
     EMPLOYEES: {
       name: "Employees",
-      // Initialize the headers so there is no guessing at column positions
-      headers: [
-        "id",
-        "primary_identifier",
-        "payload_json",
-        "updated_at",
-        "status",
-      ],
+      headers: ["id", "primary_identifier", "payload_json", "updated_at", "status"],
     },
 
     // Table 2: Schedules & Coverage - Table containing the weekly generated schedules and staggered break metrics
@@ -110,17 +103,7 @@ const SheetDB = (function () {
     if (col.status !== undefined) row[col.status] = rec.status || "ACTIVE";
 
     // Extract non-grid attributes into JSON payload string
-    const {
-      _rowNum,
-      id,
-      primary_identifier,
-      employee_id,
-      department,
-      updated_at,
-      created_at,
-      status,
-      ...payload
-    } = rec;
+    const { _rowNum, id, primary_identifier, employee_id, department, updated_at, created_at, status, ...payload } = rec;
 
     // Routes any values that were not able to be assigned to cells to the JSON payload
     ['primary_identifier', 'employee_id', 'department', 'status'].forEach(f => {
